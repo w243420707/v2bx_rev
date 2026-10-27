@@ -54,6 +54,15 @@ wget -N https://raw.githubusercontent.com/w243420707/v2bx_rev/main/scripts/insta
 
 安装完成后编辑 `/etc/V2bX/config.json` 填入面板信息，然后 `systemctl restart V2bX`。
 
+## 手动安装
+
+[手动安装教程](https://v2bx.v-50.me/v2bx/v2bx-xia-zai-he-an-zhuang/install/manual)
+
+## TODO
+
+- [ ] 重新实现动态限速
+- [ ] 完善使用文档
+
 ## 构建
 
 ``` bash
@@ -63,18 +72,31 @@ GOEXPERIMENT=jsonv2 go build -v -o build_assets/V2bX -tags "sing xray hysteria2 
 
 ## 发布
 
-创建 GitHub Release（或打 tag 后创建 Release）即自动触发 Actions，构建多平台二进制并上传到 Release，同时构建 Docker 镜像推送到 ghcr.io：
+创建 GitHub Release 即自动触发 Actions，构建多平台二进制并上传到 Release，同时构建 Docker 镜像推送到 ghcr.io：
 
 ``` bash
-git tag v0.1.1 && git push origin v0.1.1
-gh release create v0.1.1 --generate-notes
+git tag v0.1.3 && git push origin v0.1.3
+gh release create v0.1.3 --generate-notes
 ```
 
-也可在仓库 Actions 页面手动触发 `Build and Release` / `Publish Docker image` 工作流。
+此外 push / PR 命中 `**/*.go`、`go.mod`、`go.sum` 或 release workflow 时也会自动跑构建检查（不上传资产），CodeQL 每周自动安全扫描。也可在 Actions 页面手动触发 `Build and Release` / `Publish Docker image` 工作流。
 
 ## 配置说明
 
 配置文件示例见 [`example/config.json`](example/config.json)。
+
+## 使用教程
+
+[详细使用教程](https://v2bx.v-50.me/)
+
+## Thanks
+
+* [Project X](https://github.com/XTLS/)
+* [V2Fly](https://github.com/v2fly)
+* [VNet-V2ray](https://github.com/ProxyPanel/VNet-V2ray)
+* [Air-Universe](https://github.com/crossfw/Air-Universe)
+* [XrayR](https://github.com/XrayR/XrayR)
+* [sing-box](https://github.com/SagerNet/sing-box)
 
 ## 免责声明
 
@@ -84,6 +106,11 @@ gh release create v0.1.1 --generate-notes
 * 本项目可能会随想法或思路的变动随性更改项目结构或大规模重构代码，若不能接受请勿使用。
 
 ## Changelog
+
+### v0.1.3 (2026-10-27)
+
+* 恢复被过度清理的原有功能：还原 CodeQL 安全扫描工作流、Issue 模板，恢复 push/PR 自动构建触发（`master` / `dev_new` / `main` 分支），README 恢复 TODO、手动安装教程、使用教程链接与 Thanks 致谢。
+* 保留必要修复：Release/Docker 工作流的 `permissions` 权限声明（缺失会导致资产上传与镜像推送失败）。
 
 ### v0.1.2 (2026-10-27)
 
