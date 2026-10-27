@@ -38,21 +38,26 @@ A V2board node server based on multi core, modified from XrayR.
 
 ## 一键安装
 
-适用 Debian / Ubuntu / CentOS / Alpine 等主流 Linux（需 root）。脚本会按系统架构从 Releases 自动下载对应二进制，安装为 systemd 服务：
+适用 Debian / Ubuntu / CentOS / Alpine / Arch 等主流 Linux（需 root）。脚本自动识别系统与架构（x86_64 / aarch64 / s390x），从 Releases 下载对应二进制，安装为 systemd 或 OpenRC 服务：
 
 ``` bash
 bash <(curl -Ls https://raw.githubusercontent.com/w243420707/v2bx_rev/main/scripts/install.sh)
 ```
 
-或先下载再执行：
+安装后可用 `V2bX` 管理命令（安装于 `/usr/bin/V2bX`，兼容 `v2bx` 小写）：
 
-``` bash
-wget -N https://raw.githubusercontent.com/w243420707/v2bx_rev/main/scripts/install.sh && bash install.sh
-```
+| 命令 | 作用 |
+|------|------|
+| `V2bX` | 显示管理菜单 |
+| `V2bX start` / `stop` / `restart` | 启动 / 停止 / 重启 |
+| `V2bX status` | 查看运行状态 |
+| `V2bX log` | 查看日志 |
+| `V2bX update` / `update x.x.x` | 更新到最新 / 指定版本 |
+| `V2bX install` / `uninstall` | 安装 / 卸载 |
+| `V2bX x25519` | 生成 x25519 密钥 |
+| `V2bX generate` | 生成配置文件 |
 
-支持非交互参数：`bash install.sh install`（安装）/ `update`（更新）/ `uninstall`（卸载）。
-
-安装完成后编辑 `/etc/V2bX/config.json` 填入面板信息，然后 `systemctl restart V2bX`。
+首次安装时脚本会询问是否自动生成配置文件，也可随时用 `V2bX generate` 重新生成。配置文件位于 `/etc/V2bX/config.json`。
 
 ## 手动安装
 
@@ -106,6 +111,11 @@ gh release create v0.1.3 --generate-notes
 * 本项目可能会随想法或思路的变动随性更改项目结构或大规模重构代码，若不能接受请勿使用。
 
 ## Changelog
+
+### v0.1.4 (2026-10-27)
+
+* 一键安装改用上游原版脚本（`scripts/install.sh` + `V2bX.sh` + `initconfig.sh`），仅替换仓库地址为 `w243420707/v2bx_rev`，其余逻辑保持原版：安装路径 `/usr/local/V2bX/`、systemd/OpenRC 双支持、x86_64/aarch64/s390x 架构识别、安装后附带 `V2bX` 管理命令与首次配置生成向导。
+* ARM 架构支持与原版完全一致：CI 构建矩阵（linux arm5/6/7、arm64、darwin arm64、android arm64、freebsd arm、windows arm7）未做任何改动，安装脚本从 Releases 拉取对应架构资产。
 
 ### v0.1.3 (2026-10-27)
 
