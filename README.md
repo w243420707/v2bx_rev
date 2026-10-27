@@ -112,6 +112,11 @@ gh release create v0.1.3 --generate-notes
 
 ## Changelog
 
+### v0.1.6 (2026-10-27)
+
+* 清理仓库分支：关闭并删除 5 个 Dependabot 自动升级 PR 及其分支，仓库只保留 `main` 主分支。
+* 彻底移除 `.github/dependabot.yml`（Dependabot 自动依赖更新是这些分支的来源），不再自动创建升级 PR/分支，依赖升级改为手动。
+
 ### v0.1.5 (2026-10-27)
 
 * 依赖保险：编译命脉的三个上游个人仓库已 fork 到本账号并接入——`w243420707/xray-core`（替换 xray 内核）、`w243420707/sing-box_mod`（替换 sing-box 内核）、`w243420707/sing-vmess`（vmess 扩展，含 module 路径修正）。`go.mod` 两条 `replace` 与兜底 replace 全部指向 fork，`go.sum` 不再引用 wyx2685。
