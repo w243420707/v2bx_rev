@@ -45,10 +45,11 @@ GOEXPERIMENT=jsonv2 go build -v -o build_assets/V2bX -tags "sing xray hysteria2 
 
 ## 发布
 
-打 tag 推送或创建 GitHub Release 后，Actions 会自动构建多平台二进制与 Docker 镜像：
+创建 GitHub Release（或打 tag 后创建 Release）即自动触发 Actions，构建多平台二进制并上传到 Release，同时构建 Docker 镜像推送到 ghcr.io：
 
 ``` bash
-git tag v0.1.0 && git push origin v0.1.0
+git tag v0.1.1 && git push origin v0.1.1
+gh release create v0.1.1 --generate-notes
 ```
 
 也可在仓库 Actions 页面手动触发 `Build and Release` / `Publish Docker image` 工作流。
@@ -65,6 +66,12 @@ git tag v0.1.0 && git push origin v0.1.0
 * 本项目可能会随想法或思路的变动随性更改项目结构或大规模重构代码，若不能接受请勿使用。
 
 ## Changelog
+
+### v0.1.1 (2026-10-27)
+
+* 修复 CI 权限：Release 工作流补充 `contents: write`，Docker 工作流补充 `packages: write`，解决上传资产/推送镜像时报 `Resource not accessible by integration`。
+* 发布触发精简：去掉 tag 推送触发，统一由「创建 Release」或手动触发，避免重复构建。
+* 实测：多平台二进制构建 23/23 通过，v0.1.1 为第一个带资产的正式版。
 
 ### v0.1.0 (2026-10-27)
 

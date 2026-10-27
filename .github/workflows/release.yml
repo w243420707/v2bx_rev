@@ -2,10 +2,11 @@ name: Build and Release
 
 on:
   workflow_dispatch:
-  push:
-    tags: ['v*']
   release:
     types: [published]
+
+permissions:
+  contents: write
 
 jobs:
 
