@@ -112,6 +112,11 @@ gh release create v0.1.3 --generate-notes
 
 ## Changelog
 
+### v0.1.5 (2026-10-27)
+
+* 依赖保险：编译命脉的三个上游个人仓库已 fork 到本账号并接入——`w243420707/xray-core`（替换 xray 内核）、`w243420707/sing-box_mod`（替换 sing-box 内核）、`w243420707/sing-vmess`（vmess 扩展，含 module 路径修正）。`go.mod` 两条 `replace` 与兜底 replace 全部指向 fork，`go.sum` 不再引用 wyx2685。
+* 意义：即使上游 `wyx2685` 删库/停更，本仓库依赖链仍完全独立可编译。已在本地验证干净缓存从零下载零错误 + linux/amd64 全内核完整编译通过；CI 全平台构建作最终确认。
+
 ### v0.1.4 (2026-10-27)
 
 * 一键安装改用上游原版脚本（`scripts/install.sh` + `V2bX.sh` + `initconfig.sh`），仅替换仓库地址为 `w243420707/v2bx_rev`，其余逻辑保持原版：安装路径 `/usr/local/V2bX/`、systemd/OpenRC 双支持、x86_64/aarch64/s390x 架构识别、安装后附带 `V2bX` 管理命令与首次配置生成向导。
