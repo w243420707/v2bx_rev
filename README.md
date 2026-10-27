@@ -1,41 +1,5 @@
 # v2bx_rev
 
-基于 [V2bX](https://github.com/InazumaV/V2bX) 的二次开发维护版本。
-
-A V2board node server based on multi core, modified from XrayR.
-一个基于多种内核的 V2board 节点服务端，支持 Vmess/Vless、Trojan、Shadowsocks 协议。
-
-**注意：本项目需要搭配[修改版 V2board](https://github.com/wyx2685/v2board)使用。**
-
-## 特点
-
-* 永久开源且免费。
-* 支持 Vmess/Vless, Trojan， Shadowsocks, Hysteria1/2 多种协议。
-* 支持 Vless 和 XTLS 等新特性。
-* 支持单实例对接多节点，无需重复启动。
-* 支持限制在线 IP。
-* 支持限制 Tcp 连接数。
-* 支持节点端口级别、用户级别限速。
-* 配置简单明了。
-* 修改配置自动重启实例。
-* 支持多种内核，易扩展。
-* 支持条件编译，可仅编译需要的内核。
-
-## 功能介绍
-
-| 功能        | v2ray | trojan | shadowsocks | hysteria1/2 |
-|-----------|-------|--------|-------------|----------|
-| 自动申请tls证书 | √     | √      | √           | √        |
-| 自动续签tls证书 | √     | √      | √           | √        |
-| 在线人数统计    | √     | √      | √           | √        |
-| 审计规则      | √     | √      | √           | √         |
-| 自定义DNS    | √     | √      | √           | √        |
-| 在线IP数限制   | √     | √      | √           | √        |
-| 连接数限制     | √     | √      | √           | √         |
-| 跨节点IP数限制  |√      |√       |√            |√          |
-| 按照用户限速    | √     | √      | √           | √         |
-| 动态限速(未测试) | √     | √      | √           | √         |
-
 ## 一键安装
 
 适用 Debian / Ubuntu / CentOS / Alpine / Arch 等主流 Linux（需 root）。脚本自动识别系统与架构（x86_64 / aarch64 / s390x），从 Releases 下载对应二进制，安装为 systemd 或 OpenRC 服务：
@@ -59,58 +23,11 @@ bash <(curl -Ls https://raw.githubusercontent.com/w243420707/v2bx_rev/main/scrip
 
 首次安装时脚本会询问是否自动生成配置文件，也可随时用 `V2bX generate` 重新生成。配置文件位于 `/etc/V2bX/config.json`。
 
-## 手动安装
-
-[手动安装教程](https://v2bx.v-50.me/v2bx/v2bx-xia-zai-he-an-zhuang/install/manual)
-
-## TODO
-
-- [ ] 重新实现动态限速
-- [ ] 完善使用文档
-
-## 构建
-
-``` bash
-# 通过 -tags 选项指定要编译的内核，可选 xray， sing, hysteria2
-GOEXPERIMENT=jsonv2 go build -v -o build_assets/V2bX -tags "sing xray hysteria2 with_quic with_grpc with_utls with_wireguard with_acme with_gvisor" -trimpath -ldflags "-X 'github.com/InazumaV/V2bX/cmd.version=$version' -s -w -buildid="
-```
-
-## 发布
-
-创建 GitHub Release 即自动触发 Actions，构建多平台二进制并上传到 Release，同时构建 Docker 镜像推送到 ghcr.io：
-
-``` bash
-git tag v0.1.3 && git push origin v0.1.3
-gh release create v0.1.3 --generate-notes
-```
-
-此外 push / PR 命中 `**/*.go`、`go.mod`、`go.sum` 或 release workflow 时也会自动跑构建检查（不上传资产），CodeQL 每周自动安全扫描。也可在 Actions 页面手动触发 `Build and Release` / `Publish Docker image` 工作流。
-
-## 配置说明
-
-配置文件示例见 [`example/config.json`](example/config.json)。
-
-## 使用教程
-
-[详细使用教程](https://v2bx.v-50.me/)
-
-## Thanks
-
-* [Project X](https://github.com/XTLS/)
-* [V2Fly](https://github.com/v2fly)
-* [VNet-V2ray](https://github.com/ProxyPanel/VNet-V2ray)
-* [Air-Universe](https://github.com/crossfw/Air-Universe)
-* [XrayR](https://github.com/XrayR/XrayR)
-* [sing-box](https://github.com/SagerNet/sing-box)
-
-## 免责声明
-
-* 此项目用于本人自用，因此本人不能保证向后兼容性。
-* 由于本人能力有限，不能保证所有功能的可用性，如果出现问题请在 Issues 反馈。
-* 本人不对任何人使用本项目造成的任何后果承担责任。
-* 本项目可能会随想法或思路的变动随性更改项目结构或大规模重构代码，若不能接受请勿使用。
-
 ## Changelog
+
+### v0.1.7 (2026-10-27)
+
+* 整理 README：清除其余全部内容，只保留一键安装与 Changelog 两部分。
 
 ### v0.1.6 (2026-10-27)
 
@@ -148,7 +65,3 @@ gh release create v0.1.3 --generate-notes
 * 移除空子模块声明（`.gitmodules`），依赖走 Go Modules `replace` 远程拉取，编译不受影响。
 * CI 精简：构建/发版改为手动触发或 tag/release 触发，移除 push 宽触发与 CodeQL 模板。
 * 新增本仓库发布流程：tag 推送后自动构建多平台二进制与 Docker 镜像。
-
-## 许可证
-
-[Mozilla Public License 2.0](LICENSE)
