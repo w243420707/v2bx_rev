@@ -36,6 +36,24 @@ A V2board node server based on multi core, modified from XrayR.
 | 按照用户限速    | √     | √      | √           | √         |
 | 动态限速(未测试) | √     | √      | √           | √         |
 
+## 一键安装
+
+适用 Debian / Ubuntu / CentOS / Alpine 等主流 Linux（需 root）。脚本会按系统架构从 Releases 自动下载对应二进制，安装为 systemd 服务：
+
+``` bash
+bash <(curl -Ls https://raw.githubusercontent.com/w243420707/v2bx_rev/main/scripts/install.sh)
+```
+
+或先下载再执行：
+
+``` bash
+wget -N https://raw.githubusercontent.com/w243420707/v2bx_rev/main/scripts/install.sh && bash install.sh
+```
+
+支持非交互参数：`bash install.sh install`（安装）/ `update`（更新）/ `uninstall`（卸载）。
+
+安装完成后编辑 `/etc/V2bX/config.json` 填入面板信息，然后 `systemctl restart V2bX`。
+
 ## 构建
 
 ``` bash
@@ -66,6 +84,10 @@ gh release create v0.1.1 --generate-notes
 * 本项目可能会随想法或思路的变动随性更改项目结构或大规模重构代码，若不能接受请勿使用。
 
 ## Changelog
+
+### v0.1.2 (2026-10-27)
+
+* 新增 `scripts/install.sh` 一键安装/更新/卸载脚本：自动识别架构下载对应 Release 资产，安装为 systemd 服务，支持交互菜单与 `install/update/uninstall` 非交互参数。
 
 ### v0.1.1 (2026-10-27)
 
