@@ -90,29 +90,32 @@ func (c *Client) GetUserList() ([]UserInfo, error) {
 	return userlist.Users, nil
 }
 
-// GetUserAlive will fetch the alive_ip count for users
+// GetUserAlive 拉取各用户当前在线的 IP 数。
+//
+// 三种失败（请求失败、非 2xx、解析失败）都必须返回 error：
+// 以前一律返回「空表 + nil」，调用方看到非 nil 就覆盖 AliveList，
+// 于是面板抖一下，所有用户的在线设备数都被清零，设备限制静默失效 60 秒，
+// 日志里还看不到任何异常。
 func (c *Client) GetUserAlive() (map[int]int, error) {
-	c.AliveMap = &AliveMap{}
 	const path = "/api/v1/server/UniProxy/alivelist"
 	r, err := c.client.R().
 		ForceContentType("application/json").
 		Get(path)
-	if err != nil || r.StatusCode() >= 399 {
-		c.AliveMap.Alive = make(map[int]int)
-		return c.AliveMap.Alive, nil
+	if err != nil {
+		return nil, fmt.Errorf("get alive list: %w", err)
 	}
 	if r == nil || r.RawResponse == nil {
-		fmt.Printf("received nil response or raw response")
-		c.AliveMap.Alive = make(map[int]int)
-		return c.AliveMap.Alive, nil
+		return nil, fmt.Errorf("get alive list: empty response")
 	}
 	defer r.RawResponse.Body.Close()
-	if err := json.Unmarshal(r.Body(), c.AliveMap); err != nil {
-		fmt.Printf("unmarshal user alive list error: %s", err)
-		c.AliveMap.Alive = make(map[int]int)
+	if r.StatusCode() >= 399 {
+		return nil, fmt.Errorf("get alive list: http %d", r.StatusCode())
 	}
-
-	return c.AliveMap.Alive, nil
+	alive := &AliveMap{}
+	if err := json.Unmarshal(r.Body(), alive); err != nil {
+		return nil, fmt.Errorf("decode alive list: %w", err)
+	}
+	return alive.Alive, nil
 }
 
 type UserTraffic struct {

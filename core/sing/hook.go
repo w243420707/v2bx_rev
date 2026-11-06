@@ -88,7 +88,8 @@ func (h *HookServer) RoutedPacketConnection(_ context.Context, conn N.PacketConn
 		log.Error("[", m.Inbound, "] ", "Limited ", m.User, " by ip or conn")
 		return conn
 	} else if b != nil {
-		//conn = rate.NewPacketConnCounter(conn, b)
+		// UDP 也要限速：这行以前是注释掉的，等于 sing 内核下 UDP 完全不限。
+		conn = rate.NewPacketConnRateLimiter(conn, b)
 	}
 	if l != nil {
 		destStr := m.Destination.AddrString()

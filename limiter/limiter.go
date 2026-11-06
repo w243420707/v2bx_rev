@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/InazumaV/V2bX/api/panel"
@@ -29,7 +30,42 @@ type Limiter struct {
 	UUIDtoUID     map[string]int // Key: UUID, value: Uid
 	UserLimitInfo *sync.Map      // Key: TagUUID value: UserLimitInfo
 	SpeedLimiter  *sync.Map      // key: TagUUID, value: *ratelimit.Bucket
-	AliveList     map[int]int    // Key: Uid, value: alive_ip
+	// alive 存 map[int]int（Uid -> 在线 IP 数）。原来是对 map 直接赋值，
+	// 而拉取在 nodeInfoMonitor、读取在每个新建连接上，两者跨 goroutine，
+	// map 头赋值不是原子操作，delete 更是原地修改。存进来的 map 约定只读。
+	alive atomic.Value
+}
+
+// SetAlive 用副本替换在线 IP 计数，避免与并发读共用同一张 map。
+func (l *Limiter) SetAlive(m map[int]int) {
+	cp := make(map[int]int, len(m))
+	for k, v := range m {
+		cp[k] = v
+	}
+	l.alive.Store(cp)
+}
+
+// AliveOf 取某个用户当前的在线 IP 数；没有记录时返回 0（等同不限）。
+func (l *Limiter) AliveOf(uid int) int {
+	m, _ := l.alive.Load().(map[int]int)
+	if m == nil {
+		return 0
+	}
+	return m[uid]
+}
+
+// dropAlive 删除某个用户的计数，copy-on-write：原地 delete 会与并发读冲突。
+func (l *Limiter) dropAlive(uid int) {
+	m, _ := l.alive.Load().(map[int]int)
+	if m == nil {
+		return
+	}
+	cp := make(map[int]int, len(m))
+	for k, v := range m {
+		cp[k] = v
+	}
+	delete(cp, uid)
+	l.alive.Store(cp)
 }
 
 type UserLimitInfo struct {
@@ -47,9 +83,9 @@ func AddLimiter(tag string, l *conf.LimitConfig, users []panel.UserInfo, aliveLi
 		UserOnlineIP:  new(sync.Map),
 		UserLimitInfo: new(sync.Map),
 		SpeedLimiter:  new(sync.Map),
-		AliveList:     aliveList,
 		OldUserOnline: new(sync.Map),
 	}
+	info.SetAlive(aliveList)
 	uuidmap := make(map[string]int)
 	for i := range users {
 		uuidmap[users[i].Uuid] = users[i].Id
@@ -87,13 +123,25 @@ func DeleteLimiter(tag string) {
 	limitLock.Unlock()
 }
 
-func (l *Limiter) UpdateUser(tag string, added []panel.UserInfo, deleted []panel.UserInfo) {
+func (l *Limiter) UpdateUser(tag string, added, deleted, modified []panel.UserInfo) {
 	for i := range deleted {
 		l.UserLimitInfo.Delete(format.UserTag(tag, deleted[i].Uuid))
 		l.UserOnlineIP.Delete(format.UserTag(tag, deleted[i].Uuid))
 		l.SpeedLimiter.Delete(format.UserTag(tag, deleted[i].Uuid))
 		delete(l.UUIDtoUID, deleted[i].Uuid)
-		delete(l.AliveList, deleted[i].Id)
+		l.dropAlive(deleted[i].Id)
+	}
+	for i := range modified {
+		taguuid := format.UserTag(tag, modified[i].Uuid)
+		if v, ok := l.UserLimitInfo.Load(taguuid); ok {
+			info := v.(*UserLimitInfo)
+			info.SpeedLimit = modified[i].SpeedLimit
+			info.DeviceLimit = modified[i].DeviceLimit
+		}
+		// 限速桶在连接建立时就被取走了，改不动已建立的连接；
+		// 这里删掉旧桶，让新连接按新速率重建。已连着的保持原速率直到自然断开——
+		// 宁可多给一轮旧速率，也不要像以前那样把整号踢下线。
+		l.SpeedLimiter.Delete(taguuid)
 	}
 	for i := range added {
 		userLimit := &UserLimitInfo{
@@ -154,7 +202,7 @@ func (l *Limiter) CheckLimit(taguuid string, ip string, isTcp bool, noSSUDP bool
 		// Store online user for device limit
 		newipMap := new(sync.Map)
 		newipMap.Store(ip, uid)
-		aliveIp := l.AliveList[uid]
+		aliveIp := l.AliveOf(uid)
 		// If any device is online
 		if v, loaded := l.UserOnlineIP.LoadOrStore(taguuid, newipMap); loaded {
 			oldipMap := v.(*sync.Map)

@@ -71,11 +71,14 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 	// get user alive
 	newA, err := c.apiClient.GetUserAlive()
 	if err != nil {
+		// 拉不到就沿用上一轮的在线 IP 数据。
+		// 这里不能 return：那会让用户名单也停在这一轮不更新，
+		// 「设备数可能旧一点」比「流量/封禁/限速全都不生效」轻得多。
 		log.WithFields(log.Fields{
 			"tag": c.tag,
 			"err": err,
-		}).Error("Get alive list failed")
-		return nil
+		}).Warn("Get alive list failed, keep last alive list")
+		newA = nil
 	}
 	if newN != nil {
 		c.info = newN
@@ -106,7 +109,7 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 		}
 		// update alive list
 		if newA != nil {
-			c.limiter.AliveList = newA
+			c.limiter.SetAlive(newA)
 		}
 		// Update rule
 		err = c.limiter.UpdateRule(&newN.Rules)
@@ -169,13 +172,13 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 	}
 	// update alive list
 	if newA != nil {
-		c.limiter.AliveList = newA
+		c.limiter.SetAlive(newA)
 	}
 	// node no changed, check users
 	if len(newU) == 0 {
 		return nil
 	}
-	deleted, added := compareUserList(c.userList, newU)
+	deleted, added, modified := compareUserList(c.userList, newU)
 	if len(deleted) > 0 {
 		// have deleted users
 		err = c.server.DelUsers(deleted, c.tag, c.info)
@@ -202,9 +205,9 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 			return nil
 		}
 	}
-	if len(added) > 0 || len(deleted) > 0 {
+	if len(added) > 0 || len(deleted) > 0 || len(modified) > 0 {
 		// update Limiter
-		c.limiter.UpdateUser(c.tag, added, deleted)
+		c.limiter.UpdateUser(c.tag, added, deleted, modified)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"tag": c.tag,

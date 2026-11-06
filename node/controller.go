@@ -57,7 +57,11 @@ func (c *Controller) Start() error {
 	}
 	c.aliveMap, err = c.apiClient.GetUserAlive()
 	if err != nil {
-		return fmt.Errorf("failed to get user alive list: %s", err)
+		// 面板偶发抖动不该让节点起不来：先用空表启动，下一轮拉取会补上。
+		log.WithFields(log.Fields{
+			"err": err,
+		}).Warn("get alive list failed, start with empty alive list")
+		c.aliveMap = make(map[int]int)
 	}
 	if len(c.Options.Name) == 0 {
 		c.tag = c.buildNodeTag(node)
