@@ -22,3 +22,8 @@ quic_singbox.sh
 
 # 本地工具链（Go SDK 等），不入库
 .tools/
+
+# 测试产生的证书临时文件
+node/1.key
+node/1.pem
+node/cert/
