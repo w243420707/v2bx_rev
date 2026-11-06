@@ -1,8 +1,8 @@
 package node
 
 import (
-	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/InazumaV/V2bX/api/panel"
 	"github.com/InazumaV/V2bX/common/task"
@@ -13,8 +13,11 @@ import (
 )
 
 type Controller struct {
-	server                    vCore.Core
-	apiClient                 *panel.Client
+	server    vCore.Core
+	apiClient *panel.Client
+	// tag 与 limiter 会被两个定时任务同时访问（拉配置的写、上报的读），
+	// 原来直接裸读写属于数据竞争：极端情况下按旧 tag 上报，面板会直接丢弃。
+	stateMu                   sync.RWMutex
 	tag                       string
 	limiter                   *limiter.Limiter
 	traffic                   map[string]int64
@@ -27,6 +30,30 @@ type Controller struct {
 	dynamicSpeedLimitPeriodic *task.Task
 	onlineIpReportPeriodic    *task.Task
 	*conf.Options
+}
+
+func (c *Controller) Tag() string {
+	c.stateMu.RLock()
+	defer c.stateMu.RUnlock()
+	return c.tag
+}
+
+func (c *Controller) setTag(tag string) {
+	c.stateMu.Lock()
+	defer c.stateMu.Unlock()
+	c.tag = tag
+}
+
+func (c *Controller) Limiter() *limiter.Limiter {
+	c.stateMu.RLock()
+	defer c.stateMu.RUnlock()
+	return c.limiter
+}
+
+func (c *Controller) setLimiter(l *limiter.Limiter) {
+	c.stateMu.Lock()
+	defer c.stateMu.Unlock()
+	c.limiter = l
 }
 
 // NewController return a Node controller with default parameters.
@@ -53,7 +80,9 @@ func (c *Controller) Start() error {
 		return fmt.Errorf("get user list error: %s", err)
 	}
 	if len(c.userList) == 0 {
-		return errors.New("add users error: not have any user")
+		// 权限组里还没有用户（新建节点很常见）。以前直接返回错误，节点会反复重启；
+		// 现在先空跑把节点注册上去，下一轮拉到用户会自动补。
+		log.Warn("user list is empty, start with no user")
 	}
 	c.aliveMap, err = c.apiClient.GetUserAlive()
 	if err != nil {
@@ -64,18 +93,18 @@ func (c *Controller) Start() error {
 		c.aliveMap = make(map[int]int)
 	}
 	if len(c.Options.Name) == 0 {
-		c.tag = c.buildNodeTag(node)
+		c.setTag(c.buildNodeTag(node))
 	} else {
-		c.tag = c.Options.Name
+		c.setTag(c.Options.Name)
 	}
 
 	// add limiter
-	l := limiter.AddLimiter(c.tag, &c.LimitConfig, c.userList, c.aliveMap)
+	l := limiter.AddLimiter(c.Tag(), &c.LimitConfig, c.userList, c.aliveMap)
 	// add rule limiter
 	if err = l.UpdateRule(&node.Rules); err != nil {
 		return fmt.Errorf("update rule error: %s", err)
 	}
-	c.limiter = l
+	c.setLimiter(l)
 	if node.Security == panel.Tls {
 		err = c.requestCert()
 		if err != nil {
@@ -83,19 +112,22 @@ func (c *Controller) Start() error {
 		}
 	}
 	// Add new tag
-	err = c.server.AddNode(c.tag, node, c.Options)
+	err = c.server.AddNode(c.Tag(), node, c.Options)
 	if err != nil {
 		return fmt.Errorf("add new node error: %s", err)
 	}
-	added, err := c.server.AddUsers(&vCore.AddUsersParams{
-		Tag:      c.tag,
-		Users:    c.userList,
-		NodeInfo: node,
-	})
-	if err != nil {
-		return fmt.Errorf("add users error: %s", err)
+	added := 0
+	if len(c.userList) > 0 {
+		added, err = c.server.AddUsers(&vCore.AddUsersParams{
+			Tag:      c.Tag(),
+			Users:    c.userList,
+			NodeInfo: node,
+		})
+		if err != nil {
+			return fmt.Errorf("add users error: %s", err)
+		}
 	}
-	log.WithField("tag", c.tag).Infof("Added %d new users", added)
+	log.WithField("tag", c.Tag()).Infof("Added %d new users", added)
 	c.info = node
 	c.startTasks(node)
 	return nil
@@ -103,7 +135,7 @@ func (c *Controller) Start() error {
 
 // Close implement the Close() function of the service interface
 func (c *Controller) Close() error {
-	limiter.DeleteLimiter(c.tag)
+	limiter.DeleteLimiter(c.Tag())
 	if c.nodeInfoMonitorPeriodic != nil {
 		c.nodeInfoMonitorPeriodic.Close()
 	}
@@ -119,7 +151,7 @@ func (c *Controller) Close() error {
 	if c.onlineIpReportPeriodic != nil {
 		c.onlineIpReportPeriodic.Close()
 	}
-	err := c.server.DelNode(c.tag)
+	err := c.server.DelNode(c.Tag())
 	if err != nil {
 		return fmt.Errorf("del node error: %s", err)
 	}

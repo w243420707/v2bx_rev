@@ -30,7 +30,10 @@ func (h *HookServer) ModeList() []string {
 func (h *HookServer) RoutedConnection(_ context.Context, conn net.Conn, m adapter.InboundContext, _ adapter.Rule, _ adapter.Outbound) net.Conn {
 	l, err := limiter.GetLimiter(m.Inbound)
 	if err != nil {
-		log.Warn("get limiter for ", m.Inbound, " error: ", err)
+		// 拿不到限速器就放行 = 这条连接既不限速也不查设备数。
+		// 付费服务宁可不给连，也不给一条不受控的通道。
+		log.Error("get limiter for ", m.Inbound, " error: ", err, ", close connection")
+		conn.Close()
 		return conn
 	}
 	taguuid := format.UserTag(m.Inbound, m.User)
@@ -78,7 +81,10 @@ func (h *HookServer) RoutedConnection(_ context.Context, conn net.Conn, m adapte
 func (h *HookServer) RoutedPacketConnection(_ context.Context, conn N.PacketConn, m adapter.InboundContext, _ adapter.Rule, _ adapter.Outbound) N.PacketConn {
 	l, err := limiter.GetLimiter(m.Inbound)
 	if err != nil {
-		log.Warn("get limiter for ", m.Inbound, " error: ", err)
+		// 拿不到限速器就放行 = 这条连接既不限速也不查设备数。
+		// 付费服务宁可不给连，也不给一条不受控的通道。
+		log.Error("get limiter for ", m.Inbound, " error: ", err, ", close connection")
+		conn.Close()
 		return conn
 	}
 	ip := m.Source.Addr.String()

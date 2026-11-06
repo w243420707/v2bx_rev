@@ -6,21 +6,26 @@ import (
 )
 
 func (c *Controller) reportUserTrafficTask() (err error) {
-	userTraffic, _ := c.server.GetUserTrafficSlice(c.tag, true)
+	// 先读不清零：推送失败时计数器还在，下一轮会把这批流量一起报上去。
+	// 以前是「先清零再推」，面板一抖这一批就永久丢了，用户等于白用。
+	userTraffic, _ := c.server.GetUserTrafficSlice(c.Tag(), false)
 	if len(userTraffic) > 0 {
 		err = c.apiClient.ReportUserTraffic(userTraffic)
 		if err != nil {
 			log.WithFields(log.Fields{
-				"tag": c.tag,
+				"tag": c.Tag(),
 				"err": err,
-			}).Info("Report user traffic failed")
+			}).Error("Report user traffic failed, keep counters for retry")
 		} else {
-			log.WithField("tag", c.tag).Infof("Report %d users traffic", len(userTraffic))
-			log.WithField("tag", c.tag).Debugf("User traffic: %+v", userTraffic)
+			// 推成功再清零。两次读取之间的几十毫秒新流量会一并清零，
+			// 相比「整批丢失」，这点误差可以接受。
+			_, _ = c.server.GetUserTrafficSlice(c.Tag(), true)
+			log.WithField("tag", c.Tag()).Infof("Report %d users traffic", len(userTraffic))
+			log.WithField("tag", c.Tag()).Debugf("User traffic: %+v", userTraffic)
 		}
 	}
 
-	if onlineDevice, err := c.limiter.GetOnlineDevice(); err != nil {
+	if onlineDevice, err := c.Limiter().GetOnlineDevice(); err != nil {
 		log.Print(err)
 	} else if len(*onlineDevice) > 0 {
 		// Only report user has traffic > 100kb to allow ping test
@@ -44,12 +49,12 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 		}
 		if err = c.apiClient.ReportNodeOnlineUsers(&data); err != nil {
 			log.WithFields(log.Fields{
-				"tag": c.tag,
+				"tag": c.Tag(),
 				"err": err,
 			}).Info("Report online users failed")
 		} else {
-			log.WithField("tag", c.tag).Infof("Total %d online users, %d Reported", len(*onlineDevice), len(result))
-			log.WithField("tag", c.tag).Debugf("Online users: %+v", data)
+			log.WithField("tag", c.Tag()).Infof("Total %d online users, %d Reported", len(*onlineDevice), len(result))
+			log.WithField("tag", c.Tag()).Debugf("Online users: %+v", data)
 		}
 	}
 

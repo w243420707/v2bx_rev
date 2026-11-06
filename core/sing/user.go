@@ -16,6 +16,7 @@ import (
 	"github.com/sagernet/sing-box/protocol/tuic"
 	"github.com/sagernet/sing-box/protocol/vless"
 	"github.com/sagernet/sing-box/protocol/vmess"
+	log "github.com/sirupsen/logrus"
 )
 
 func (b *Sing) AddUsers(p *core.AddUsersParams) (added int, err error) {
@@ -52,10 +53,20 @@ func (b *Sing) AddUsers(p *core.AddUsersParams) (added int, err error) {
 		us := make([]option.ShadowsocksUser, len(p.Users))
 		for i := range p.Users {
 			var password = p.Users[i].Uuid
+			// 2022 系列要精确的密钥长度，UUID 不够长会切片越界 panic，把整个节点带下去。
+			// 长度不够就跳过这个人，记一条日志，别让一个人的数据毁掉整个进程。
 			switch p.Shadowsocks.Cipher {
 			case "2022-blake3-aes-128-gcm":
+				if len(password) < 16 {
+					log.WithField("uuid", p.Users[i].Uuid).Error("uuid too short for 2022-blake3-aes-128-gcm")
+					continue
+				}
 				password = base64.StdEncoding.EncodeToString([]byte(password[:16]))
 			case "2022-blake3-aes-256-gcm":
+				if len(password) < 32 {
+					log.WithField("uuid", p.Users[i].Uuid).Error("uuid too short for 2022-blake3-aes-256-gcm")
+					continue
+				}
 				password = base64.StdEncoding.EncodeToString([]byte(password[:32]))
 			}
 			us[i] = option.ShadowsocksUser{
