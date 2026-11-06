@@ -1,8 +1,8 @@
 module github.com/InazumaV/V2bX
 
-go 1.25
+go 1.27
 
-toolchain go1.25.0
+toolchain go1.27.3
 
 require (
 	github.com/apernet/hysteria/core/v2 v2.6.4
