@@ -70,3 +70,35 @@ func TestCompareUserListAddRemove(t *testing.T) {
 		t.Fatalf("不该有 modified，得到 %+v", modified)
 	}
 }
+
+// 没有待补报数据时，原样返回本轮的。
+func TestMergeUserTrafficNoPending(t *testing.T) {
+	fresh := []panel.UserTraffic{{UID: 1, Upload: 10, Download: 20}}
+	got := mergeUserTraffic(nil, fresh)
+	if len(got) != 1 || got[0].Upload != 10 {
+		t.Fatalf("期望原样返回，得到 %+v", got)
+	}
+}
+
+// 同一个用户：待补报的与新一轮相加，不能覆盖。
+func TestMergeUserTrafficSumsSameUser(t *testing.T) {
+	pending := []panel.UserTraffic{{UID: 1, Upload: 10, Download: 20}}
+	fresh := []panel.UserTraffic{{UID: 1, Upload: 5, Download: 7}}
+	got := mergeUserTraffic(pending, fresh)
+	if len(got) != 1 {
+		t.Fatalf("期望 1 条，得到 %d 条", len(got))
+	}
+	if got[0].Upload != 15 || got[0].Download != 27 {
+		t.Fatalf("期望 up=15 down=27，得到 %+v", got[0])
+	}
+}
+
+// 不同用户：并存，不互相吞。
+func TestMergeUserTrafficKeepsDistinctUsers(t *testing.T) {
+	pending := []panel.UserTraffic{{UID: 1, Upload: 10, Download: 20}}
+	fresh := []panel.UserTraffic{{UID: 2, Upload: 1, Download: 2}}
+	got := mergeUserTraffic(pending, fresh)
+	if len(got) != 2 {
+		t.Fatalf("期望 2 条，得到 %d 条", len(got))
+	}
+}

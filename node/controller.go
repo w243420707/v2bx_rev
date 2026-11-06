@@ -24,6 +24,9 @@ type Controller struct {
 	userList []panel.UserInfo
 	aliveMap map[int]int
 	info     *panel.NodeInfo
+	// pendingTraffic 只有上报那个 goroutine 读写：推送失败时把这一批挂在这里，
+	// 下一轮和新数据合并后再报，避免面板抖动导致流量凭空消失。
+	pendingTraffic []panel.UserTraffic
 	// needRebuild 只由 nodeInfoMonitor 这个 goroutine 读写：
 	// 重建节点失败后置位，下一轮强制用上一次收到的配置重试。
 	needRebuild               bool

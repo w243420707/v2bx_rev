@@ -6,22 +6,24 @@ import (
 )
 
 func (c *Controller) reportUserTrafficTask() (err error) {
-	// 先读不清零：推送失败时计数器还在，下一轮会把这批流量一起报上去。
-	// 以前是「先清零再推」，面板一抖这一批就永久丢了，用户等于白用。
-	userTraffic, _ := c.server.GetUserTrafficSlice(c.Tag(), false)
-	if len(userTraffic) > 0 {
-		err = c.apiClient.ReportUserTraffic(userTraffic)
+	// 原子地「读取并清零」，不会重复计；推送失败就把这批挂在 pendingTraffic 上，
+	// 下一轮和新的用量合并后再报。既不丢量，也不会像「推成功后再读一次清零」
+	// 那样把推送期间新产生的流量一起清掉。
+	fresh, _ := c.server.GetUserTrafficSlice(c.Tag(), true)
+	batch := mergeUserTraffic(c.pendingTraffic, fresh)
+	if len(batch) > 0 {
+		err = c.apiClient.ReportUserTraffic(batch)
 		if err != nil {
+			c.pendingTraffic = batch
 			log.WithFields(log.Fields{
-				"tag": c.Tag(),
-				"err": err,
-			}).Error("Report user traffic failed, keep counters for retry")
+				"tag":     c.Tag(),
+				"err":     err,
+				"pending": len(batch),
+			}).Error("Report user traffic failed, keep for retry")
 		} else {
-			// 推成功再清零。两次读取之间的几十毫秒新流量会一并清零，
-			// 相比「整批丢失」，这点误差可以接受。
-			_, _ = c.server.GetUserTrafficSlice(c.Tag(), true)
-			log.WithField("tag", c.Tag()).Infof("Report %d users traffic", len(userTraffic))
-			log.WithField("tag", c.Tag()).Debugf("User traffic: %+v", userTraffic)
+			c.pendingTraffic = nil
+			log.WithField("tag", c.Tag()).Infof("Report %d users traffic", len(batch))
+			log.WithField("tag", c.Tag()).Debugf("User traffic: %+v", batch)
 		}
 	}
 
@@ -31,7 +33,7 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 		// Only report user has traffic > 100kb to allow ping test
 		var result []panel.OnlineUser
 		var nocountUID = make(map[int]struct{})
-		for _, traffic := range userTraffic {
+		for _, traffic := range fresh {
 			total := traffic.Upload + traffic.Download
 			if total < int64(c.Options.DeviceOnlineMinTraffic*1000) {
 				nocountUID[traffic.UID] = struct{}{}
@@ -58,7 +60,6 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 		}
 	}
 
-	userTraffic = nil
 	return nil
 }
 
@@ -90,4 +91,32 @@ func compareUserList(old, new []panel.UserInfo) (deleted, added, modified []pane
 	}
 
 	return deleted, added, modified
+}
+
+// mergeUserTraffic 把「上一轮没报成功的」和「这一轮新增的」按用户合并。
+// 只按 uid 累加，不同用户直接并存；返回切片顺序无关紧要。
+func mergeUserTraffic(pending, fresh []panel.UserTraffic) []panel.UserTraffic {
+	if len(pending) == 0 {
+		return fresh
+	}
+	merged := make(map[int]panel.UserTraffic, len(pending)+len(fresh))
+	for _, t := range pending {
+		merged[t.UID] = t
+	}
+	for _, t := range fresh {
+		if old, ok := merged[t.UID]; ok {
+			merged[t.UID] = panel.UserTraffic{
+				UID:      t.UID,
+				Upload:   old.Upload + t.Upload,
+				Download: old.Download + t.Download,
+			}
+			continue
+		}
+		merged[t.UID] = t
+	}
+	out := make([]panel.UserTraffic, 0, len(merged))
+	for _, t := range merged {
+		out = append(out, t)
+	}
+	return out
 }
