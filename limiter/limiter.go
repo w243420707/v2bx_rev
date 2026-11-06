@@ -10,8 +10,8 @@ import (
 
 	"github.com/InazumaV/V2bX/api/panel"
 	"github.com/InazumaV/V2bX/common/format"
+	"github.com/InazumaV/V2bX/common/rate"
 	"github.com/InazumaV/V2bX/conf"
-	"github.com/juju/ratelimit"
 )
 
 var limitLock sync.RWMutex
@@ -29,7 +29,7 @@ type Limiter struct {
 	OldUserOnline *sync.Map      // Key: Ip, value: Uid
 	UUIDtoUID     map[string]int // Key: UUID, value: Uid
 	UserLimitInfo *sync.Map      // Key: TagUUID value: UserLimitInfo
-	SpeedLimiter  *sync.Map      // key: TagUUID, value: *ratelimit.Bucket
+	SpeedLimiter  *sync.Map      // key: TagUUID, value: *rate.DynamicBucket
 	// alive 存 map[int]int（Uid -> 在线 IP 数）。原来是对 map 直接赋值，
 	// 而拉取在 nodeInfoMonitor、读取在每个新建连接上，两者跨 goroutine，
 	// map 头赋值不是原子操作，delete 更是原地修改。存进来的 map 约定只读。
@@ -138,10 +138,17 @@ func (l *Limiter) UpdateUser(tag string, added, deleted, modified []panel.UserIn
 			info.SpeedLimit = modified[i].SpeedLimit
 			info.DeviceLimit = modified[i].DeviceLimit
 		}
-		// 限速桶在连接建立时就被取走了，改不动已建立的连接；
-		// 这里删掉旧桶，让新连接按新速率重建。已连着的保持原速率直到自然断开——
-		// 宁可多给一轮旧速率，也不要像以前那样把整号踢下线。
-		l.SpeedLimiter.Delete(taguuid)
+		// 就地换速率：桶外面包了 DynamicBucket，已建立的连接也立刻按新速率走。
+		limit := int64(determineSpeedLimit(l.SpeedLimit, modified[i].SpeedLimit)) * 1000000 / 8
+		if limit > 0 {
+			if v, ok := l.SpeedLimiter.Load(taguuid); ok {
+				v.(*rate.DynamicBucket).Update(limit)
+			} else {
+				l.SpeedLimiter.Store(taguuid, rate.NewDynamicBucket(limit))
+			}
+		} else {
+			l.SpeedLimiter.Delete(taguuid)
+		}
 	}
 	for i := range added {
 		userLimit := &UserLimitInfo{
@@ -171,7 +178,7 @@ func (l *Limiter) UpdateDynamicSpeedLimit(tag, uuid string, limit int, expire ti
 	return nil
 }
 
-func (l *Limiter) CheckLimit(taguuid string, ip string, isTcp bool, noSSUDP bool) (Bucket *ratelimit.Bucket, Reject bool) {
+func (l *Limiter) CheckLimit(taguuid string, ip string, isTcp bool, noSSUDP bool) (Bucket *rate.DynamicBucket, Reject bool) {
 	// check if ipv4 mapped ipv6
 	ip = strings.TrimPrefix(ip, "::ffff:")
 
@@ -234,17 +241,26 @@ func (l *Limiter) CheckLimit(taguuid string, ip string, isTcp bool, noSSUDP bool
 	}
 
 	limit := int64(determineSpeedLimit(nodeLimit, userLimit)) * 1000000 / 8 // If you need the Speed limit
-	if limit > 0 {
-		Bucket = ratelimit.NewBucketWithQuantum(time.Second, limit, limit) // Byte/s
-		if v, ok := l.SpeedLimiter.LoadOrStore(taguuid, Bucket); ok {
-			return v.(*ratelimit.Bucket), false
-		} else {
-			l.SpeedLimiter.Store(taguuid, Bucket)
-			return Bucket, false
+	if limit <= 0 {
+		// 变成不限速：把旧桶扔掉，否则下次又限速时会沿用旧速率。
+		if _, ok := l.SpeedLimiter.Load(taguuid); ok {
+			l.SpeedLimiter.Delete(taguuid)
 		}
-	} else {
 		return nil, false
 	}
+	if v, ok := l.SpeedLimiter.Load(taguuid); ok {
+		// 已有桶就地换速率：已建立的连接下一次读写就按新速率走，不用断线重连。
+		Bucket = v.(*rate.DynamicBucket)
+		Bucket.Update(limit)
+		return Bucket, false
+	}
+	b := rate.NewDynamicBucket(limit)
+	if v, loaded := l.SpeedLimiter.LoadOrStore(taguuid, b); loaded {
+		Bucket = v.(*rate.DynamicBucket)
+		Bucket.Update(limit)
+		return Bucket, false
+	}
+	return b, false
 }
 
 func (l *Limiter) GetOnlineDevice() (*[]panel.OnlineUser, error) {
