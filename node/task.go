@@ -80,11 +80,20 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 		}).Warn("Get alive list failed, keep last alive list")
 		newA = nil
 	}
+	if newN == nil && c.needRebuild && c.info != nil {
+		// 上一轮重建失败，但面板那边已经 304 了（ETag + body hash 双重去重），
+		// 配置不再变化就永远不会重新下发，节点会一直停在「半重建」状态。
+		// 这里用最后一次收到的配置强制重试一次。
+		newN = c.info
+		log.WithField("tag", c.Tag()).Warn("retry node rebuild with last known config")
+	}
 	if newN != nil {
 		c.info = newN
-		// nodeInfo changed
+		// 本轮的名单临时变量：只有重建全部成功才写回 c.userList，
+		// 否则失败后 diff 会认为"没有新增用户"，他们再也加不进来。
+		users := c.userList
 		if newU != nil {
-			c.userList = newU
+			users = newU
 		}
 		c.traffic = make(map[string]int64)
 		// Remove old node
@@ -95,6 +104,7 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 				"tag": c.Tag(),
 				"err": err,
 			}).Error("Delete node failed, retry next round")
+			c.needRebuild = true
 			return nil
 		}
 
@@ -104,7 +114,7 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 			// Remove Old limiter
 			limiter.DeleteLimiter(c.Tag())
 			// Add new Limiter
-			l := limiter.AddLimiter(c.Tag(), &c.LimitConfig, c.userList, newA)
+			l := limiter.AddLimiter(c.Tag(), &c.LimitConfig, users, newA)
 			c.setLimiter(l)
 		}
 		// update alive list
@@ -118,6 +128,7 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 				"tag": c.Tag(),
 				"err": err,
 			}).Error("Update Rule failed")
+			c.needRebuild = true
 			return nil
 		}
 
@@ -139,11 +150,12 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 				"tag": c.Tag(),
 				"err": err,
 			}).Error("Add node failed, retry next round")
+			c.needRebuild = true
 			return nil
 		}
 		_, err = c.server.AddUsers(&vCore.AddUsersParams{
 			Tag:      c.Tag(),
-			Users:    c.userList,
+			Users:    users,
 			NodeInfo: newN,
 		})
 		if err != nil {
@@ -151,8 +163,12 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 				"tag": c.Tag(),
 				"err": err,
 			}).Error("Add users failed")
+			c.needRebuild = true
 			return nil
 		}
+		// 全部成功，才把新名单写回
+		c.userList = users
+		c.needRebuild = false
 		// Check interval
 		if c.nodeInfoMonitorPeriodic.Interval != newN.PullInterval &&
 			newN.PullInterval != 0 {
@@ -162,7 +178,7 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 		}
 		if c.userReportPeriodic.Interval != newN.PushInterval &&
 			newN.PushInterval != 0 {
-			c.userReportPeriodic.Interval = newN.PullInterval
+			c.userReportPeriodic.Interval = newN.PushInterval
 			c.userReportPeriodic.Close()
 			_ = c.userReportPeriodic.Start(false)
 		}

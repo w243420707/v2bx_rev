@@ -17,13 +17,16 @@ type Controller struct {
 	apiClient *panel.Client
 	// tag 与 limiter 会被两个定时任务同时访问（拉配置的写、上报的读），
 	// 原来直接裸读写属于数据竞争：极端情况下按旧 tag 上报，面板会直接丢弃。
-	stateMu                   sync.RWMutex
-	tag                       string
-	limiter                   *limiter.Limiter
-	traffic                   map[string]int64
-	userList                  []panel.UserInfo
-	aliveMap                  map[int]int
-	info                      *panel.NodeInfo
+	stateMu  sync.RWMutex
+	tag      string
+	limiter  *limiter.Limiter
+	traffic  map[string]int64
+	userList []panel.UserInfo
+	aliveMap map[int]int
+	info     *panel.NodeInfo
+	// needRebuild 只由 nodeInfoMonitor 这个 goroutine 读写：
+	// 重建节点失败后置位，下一轮强制用上一次收到的配置重试。
+	needRebuild               bool
 	nodeInfoMonitorPeriodic   *task.Task
 	userReportPeriodic        *task.Task
 	renewCertPeriodic         *task.Task
