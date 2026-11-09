@@ -132,9 +132,20 @@ install_V2bX() {
     cd /usr/local/V2bX/
 
     if  [ $# == 0 ] ;then
-        last_version=$(curl -Ls "https://api.github.com/repos/w243420707/v2bx_rev/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+        # 取最新版本号：优先用 releases/latest 的 302 跳转（不消耗 API 配额），
+        # 拿不到再退回 GitHub API，最后才报错。以前只查 API，未登录每小时只有 60 次，
+        # 同一台机器/同一出口反复安装就会卡在「检测版本失败」。
+        last_version=$(curl -Ls -o /dev/null -w '%{url_effective}' "https://github.com/w243420707/v2bx_rev/releases/latest" | sed -E 's#.*/tag/##')
+        if [[ "$last_version" == *"/"* || -z "$last_version" ]]; then
+            # 退路 1：releases.atom，同样不走 API，不会被限流
+            last_version=$(curl -Ls "https://github.com/w243420707/v2bx_rev/releases.atom" | grep -oE '/releases/tag/[^"]+' | head -n 1 | sed -E 's#.*/tag/##')
+        fi
+        if [[ "$last_version" == *"/"* || -z "$last_version" ]]; then
+            # 退路 2：GitHub API（未登录每小时 60 次，只当兜底）
+            last_version=$(curl -Ls "https://api.github.com/repos/w243420707/v2bx_rev/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+        fi
         if [[ ! -n "$last_version" ]]; then
-            echo -e "${red}检测 V2bX 版本失败，可能是超出 Github API 限制，请稍后再试，或手动指定 V2bX 版本安装${plain}"
+            echo -e "${red}检测 V2bX 版本失败，请稍后再试，或手动指定版本安装：bash <(curl -Ls .../install.sh) v0.1.14${plain}"
             exit 1
         fi
         echo -e "检测到 V2bX 最新版本：${last_version}，开始安装"
