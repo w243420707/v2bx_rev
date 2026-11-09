@@ -94,8 +94,11 @@ func (h *HookServer) RoutedPacketConnection(_ context.Context, conn N.PacketConn
 		log.Error("[", m.Inbound, "] ", "Limited ", m.User, " by ip or conn")
 		return conn
 	} else if b != nil {
-		// UDP 也要限速：这行以前是注释掉的，等于 sing 内核下 UDP 完全不限。
-		conn = rate.NewPacketConnRateLimiter(conn, b)
+		// 这里回到上游原样：不对 UDP 套限速包装。
+		// 试过包一层（v0.1.9~v0.1.13），链路里出现
+		// panic: buffer overflow (start 0, need 16)：vmess mux 要往前面插 16 字节头时
+		// buffer 已无空间。UDP 限速先不做，稳定优先。
+		//conn = rate.NewPacketConnRateLimiter(conn, b)
 	}
 	if l != nil {
 		destStr := m.Destination.AddrString()
