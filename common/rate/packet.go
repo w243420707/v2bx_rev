@@ -8,9 +8,12 @@ import (
 
 // PacketConn 给 UDP 转发套一层限速。
 //
-// 只限 WritePacket（发回客户端的方向）：ReadPacket 上等待会卡住整个收包循环，
-// 内核缓冲区一满就是丢包，而不是降速。下行是主要流量，先把它管住，
-// 上行与 xray 内核的行为保持一致（xray 的 DispatchLink 也只包了 outbound.Writer）。
+// 只限 WritePacket（发回客户端的方向）。
+//
+// ⚠️ 不要在这里包 ReadPacket：v0.1.12 试过「超速就 FullReset 丢包」，
+// 被清空的 buffer 会继续往下游走，vmess 的 mux 要往前面插 16 字节头时
+// 已经没有空间，直接 panic: buffer overflow (start 0, need 16)，节点反复重启。
+// 上行限速要么在更外层做（不破坏 buffer），要么就不做。
 type PacketConn struct {
 	N.PacketConn
 	limiter *DynamicBucket
@@ -21,25 +24,6 @@ func NewPacketConnRateLimiter(c N.PacketConn, l *DynamicBucket) *PacketConn {
 		PacketConn: c,
 		limiter:    l,
 	}
-}
-
-func (c *PacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
-	dest, err := c.PacketConn.ReadPacket(buffer)
-	if err != nil || buffer == nil {
-		return dest, err
-	}
-	size := int64(buffer.Len())
-	if size <= 0 {
-		return dest, nil
-	}
-	// 上行也限速。UDP 没有重传、也没有背压可用，能做的只有「超速就丢」：
-	// 这里用非阻塞的 TakeAvailable，拿不到配额就把这一包清空丢掉。
-	// 千万不要在收包循环里 Wait —— 那会把整条读链路堵住，
-	// 内核缓冲区一满就是连片丢包，比限速本身更糟。
-	if got := c.limiter.Get().TakeAvailable(size); got < size {
-		buffer.FullReset()
-	}
-	return dest, nil
 }
 
 func (c *PacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
